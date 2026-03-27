@@ -15,6 +15,8 @@ A Bash script that recursively checks all GitHub Actions referenced in your work
 
 ## Prerequisites
 
+- **Bash 3.2+** (pre-installed on macOS and most Linux distributions)
+
 The following CLI tools must be installed and available on your `PATH`:
 
 | Tool | Description |
