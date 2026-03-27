@@ -36,7 +36,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pi
 より安全に実行するには、`main` の代わりに信頼できるコミット SHA を指定してください:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/<COMMIT_SHA>/check-actions-sha-pinning.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/TRUSTED_COMMIT_SHA/check-actions-sha-pinning.sh)
 ```
 
 ## 使い方

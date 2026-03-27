@@ -36,7 +36,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pi
 For better safety, pin to a trusted commit SHA instead of `main`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/<COMMIT_SHA>/check-actions-sha-pinning.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/TRUSTED_COMMIT_SHA/check-actions-sha-pinning.sh)
 ```
 
 ## Usage
