@@ -12,6 +12,7 @@ REPO_ROOT=""
 CACHE_DIR=""
 FAIL_DETAILS_FILE=""
 VISITED_FILE=""
+FAILED_VISIT_FILE=""
 FAIL_COUNT=0
 PASS_COUNT=0
 WARN_COUNT=0
@@ -132,6 +133,14 @@ mark_visited() {
   echo "$1" >> "$VISITED_FILE"
 }
 
+is_failed_visit() {
+  grep -qFx "$1" "$FAILED_VISIT_FILE" 2>/dev/null
+}
+
+mark_failed_visit() {
+  echo "$1" >> "$FAILED_VISIT_FILE"
+}
+
 # Parse "owner/repo/subpath@ref" into global vars
 parse_action_ref() {
   local uses_value="$1"
@@ -239,7 +248,11 @@ check_action() {
   local visit_key="${owner}/${repo}/${subpath}@${ref}"
 
   if is_visited "$visit_key"; then
-    print_result "PASS" "$depth" "$uses_clean" "(already checked, skipped)"
+    if is_failed_visit "$visit_key"; then
+      print_result "FAIL" "$depth" "$uses_clean" "(already checked, NOT SHA-pinned)"
+    else
+      print_result "PASS" "$depth" "$uses_clean" "(already checked, skipped)"
+    fi
     return
   fi
   mark_visited "$visit_key"
@@ -248,6 +261,7 @@ check_action() {
     print_result "FAIL" "$depth" "$uses_clean" "(NOT SHA-pinned)"
     FAIL_COUNT=$((FAIL_COUNT + 1))
     echo "${parent_chain} -> ${uses_clean}" >> "$FAIL_DETAILS_FILE"
+    mark_failed_visit "$visit_key"
     return
   fi
 
@@ -303,6 +317,7 @@ check_action() {
   if [ "$has_fail" = "true" ]; then
     print_result "FAIL" "$depth" "$uses_clean" "(composite)"
     FAIL_COUNT=$((FAIL_COUNT + 1))
+    mark_failed_visit "$visit_key"
   else
     print_result "PASS" "$depth" "$uses_clean" "(composite)"
     PASS_COUNT=$((PASS_COUNT + 1))
@@ -351,8 +366,9 @@ main() {
 
   CACHE_DIR="$(mktemp -d)"
   VISITED_FILE="${CACHE_DIR}/_visited"
+  FAILED_VISIT_FILE="${CACHE_DIR}/_failed_visit"
   FAIL_DETAILS_FILE="${CACHE_DIR}/_fail_details"
-  touch "$VISITED_FILE" "$FAIL_DETAILS_FILE"
+  touch "$VISITED_FILE" "$FAILED_VISIT_FILE" "$FAIL_DETAILS_FILE"
   trap 'rm -rf "$CACHE_DIR"' EXIT
 
   echo "Checking GitHub Actions SHA pinning (including transitive dependencies)..."
