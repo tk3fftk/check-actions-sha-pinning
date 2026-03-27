@@ -27,6 +27,18 @@ The following CLI tools must be installed and available on your `PATH`:
 
 You must also be authenticated with `gh` (`gh auth login`).
 
+## Quick Start (One-liner)
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/main/check-actions-sha-pinning.sh)
+```
+
+For better safety, pin to a trusted commit SHA instead of `main`:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/tk3fftk/check-actions-sha-pinning/TRUSTED_COMMIT_SHA/check-actions-sha-pinning.sh)
+```
+
 ## Usage
 
 ```
