@@ -10,8 +10,8 @@ set -euo pipefail
 
 REPO_ROOT=""
 CACHE_DIR=""
-VISITED_FILE=""
 FAIL_DETAILS_FILE=""
+VISITED_FILE=""
 FAIL_COUNT=0
 PASS_COUNT=0
 WARN_COUNT=0
@@ -117,26 +117,19 @@ print_result() {
 }
 
 is_sha_pinned() {
-  local ref="$1"
-  echo "$ref" | grep -qE '^[0-9a-f]{40}$' || return 1
-  return 0
+  [[ "$1" =~ ^[0-9a-f]{40}$ ]]
 }
 
 is_docker_digest_pinned() {
-  local uses_value="$1"
-  echo "$uses_value" | grep -qE '@sha256:[0-9a-f]{64}' || return 1
-  return 0
+  [[ "$1" =~ @sha256:[0-9a-f]{64} ]]
 }
 
 is_visited() {
-  local key="$1"
-  grep -qFx "$key" "$VISITED_FILE" 2>/dev/null || return 1
-  return 0
+  grep -qFx "$1" "$VISITED_FILE" 2>/dev/null
 }
 
 mark_visited() {
-  local key="$1"
-  echo "$key" >> "$VISITED_FILE"
+  echo "$1" >> "$VISITED_FILE"
 }
 
 # Parse "owner/repo/subpath@ref" into global vars
@@ -147,16 +140,15 @@ parse_action_ref() {
   action_path="${uses_value%%@*}"
   ref_part="${uses_value#*@}"
 
-  # Remove trailing comment (e.g. " # v5.0.0")
   ref_part="${ref_part%% *}"
 
-  PARSED_OWNER="$(echo "$action_path" | cut -d'/' -f1)"
-  PARSED_REPO="$(echo "$action_path" | cut -d'/' -f2)"
-  PARSED_SUBPATH=""
-  local num_parts
-  num_parts="$(echo "$action_path" | tr '/' '\n' | wc -l | tr -d ' ')"
-  if [ "$num_parts" -gt 2 ]; then
-    PARSED_SUBPATH="$(echo "$action_path" | cut -d'/' -f3-)"
+  PARSED_OWNER="${action_path%%/*}"
+  local remainder="${action_path#*/}"
+  PARSED_REPO="${remainder%%/*}"
+  if [[ "$remainder" == */* ]]; then
+    PARSED_SUBPATH="${remainder#*/}"
+  else
+    PARSED_SUBPATH=""
   fi
   PARSED_REF="$ref_part"
 }
@@ -175,29 +167,21 @@ fetch_action_yml() {
     return 1
   fi
 
-  local content_path="action.yml"
+  local base_path=""
   if [ -n "$subpath" ]; then
-    content_path="${subpath}/action.yml"
+    base_path="${subpath}/"
   fi
 
-  local api_path="repos/${owner}/${repo}/contents/${content_path}?ref=${ref}"
-
-  local response
-  if response=$(gh api "$api_path" --jq '.content' 2>/dev/null); then
-    echo "$response" | base64 -d > "$cache_file" 2>/dev/null || true
-    echo "$cache_file"
-    return 0
-  fi
-
-  # Fallback to action.yaml
-  content_path="${content_path%.yml}.yaml"
-  api_path="repos/${owner}/${repo}/contents/${content_path}?ref=${ref}"
-
-  if response=$(gh api "$api_path" --jq '.content' 2>/dev/null); then
-    echo "$response" | base64 -d > "$cache_file" 2>/dev/null || true
-    echo "$cache_file"
-    return 0
-  fi
+  local ext response
+  for ext in yml yaml; do
+    local api_path="repos/${owner}/${repo}/contents/${base_path}action.${ext}?ref=${ref}"
+    if response=$(gh api "$api_path" --jq '.content' 2>/dev/null); then
+      if echo "$response" | base64 -d > "$cache_file" 2>/dev/null; then
+        echo "$cache_file"
+        return 0
+      fi
+    fi
+  done
 
   touch "${cache_file}.notfound"
   return 1
@@ -220,14 +204,12 @@ $(yq eval '.jobs[].steps[].uses // ""' "$file" 2>/dev/null || true)"
     uses_list="$(yq eval '.runs.steps[].uses // ""' "$file" 2>/dev/null || true)"
   fi
 
-  echo "$uses_list" | grep -v '^$' | grep -v '^null$' | grep -v '^\./\|^\.github/' | sort -u || true
+  echo "$uses_list" | grep -vE '^$|^null$|^\./|^\.github/' | sort -u || true
 }
 
-# Trim trailing spaces
-trim_trailing() {
-  local s="$1"
-  while [ "${s%% }" != "$s" ] && [ -n "$s" ]; do s="${s% }"; done
-  echo "$s"
+clean_uses_value() {
+  local s="${1%% #*}"
+  echo "$s" | sed 's/ *$//'
 }
 
 # ---------------------------------------------------------------------------
@@ -237,11 +219,10 @@ trim_trailing() {
 check_action() {
   local uses_value="$1" depth="$2" parent_chain="$3"
 
-  local uses_clean="${uses_value%% #*}"
-  uses_clean="$(trim_trailing "$uses_clean")"
+  local uses_clean
+  uses_clean="$(clean_uses_value "$uses_value")"
 
-  # Handle Docker references
-  if echo "$uses_clean" | grep -q '^docker://' 2>/dev/null; then
+  if [[ "$uses_clean" == docker://* ]]; then
     if is_docker_digest_pinned "$uses_clean"; then
       print_result "PASS" "$depth" "$uses_clean" "(Docker, digest-pinned)"
       PASS_COUNT=$((PASS_COUNT + 1))
@@ -263,7 +244,6 @@ check_action() {
   fi
   mark_visited "$visit_key"
 
-  # Check if SHA-pinned
   if ! is_sha_pinned "$ref"; then
     print_result "FAIL" "$depth" "$uses_clean" "(NOT SHA-pinned)"
     FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -271,14 +251,12 @@ check_action() {
     return
   fi
 
-  # Max depth guard
   if [ "$depth" -ge "$MAX_DEPTH" ]; then
     print_result "WARN" "$depth" "$uses_clean" "(max depth ${MAX_DEPTH} reached, skipping)"
     WARN_COUNT=$((WARN_COUNT + 1))
     return
   fi
 
-  # Fetch action.yml
   local action_file
   if ! action_file=$(fetch_action_yml "$owner" "$repo" "$subpath" "$ref"); then
     print_result "WARN" "$depth" "$uses_clean" "(could not fetch: private repo or not found)"
@@ -295,7 +273,6 @@ check_action() {
     return
   fi
 
-  # Composite action: check sub-dependencies
   local sub_uses
   sub_uses=$(extract_external_uses "$action_file" "false")
 
@@ -305,16 +282,16 @@ check_action() {
     return
   fi
 
-  # Determine parent status by scanning sub-deps
+  # Determine composite parent status by scanning sub-deps
   local has_fail=false
   while IFS= read -r sub; do
     [ -z "$sub" ] && continue
-    local sub_clean="${sub%% #*}"
-    sub_clean="$(trim_trailing "$sub_clean")"
+    local sub_clean
+    sub_clean="$(clean_uses_value "$sub")"
     local sub_ref="${sub_clean#*@}"
     sub_ref="${sub_ref%% *}"
 
-    if echo "$sub_clean" | grep -q '^docker://' 2>/dev/null; then
+    if [[ "$sub_clean" == docker://* ]]; then
       if ! is_docker_digest_pinned "$sub_clean"; then
         has_fail=true
       fi
@@ -325,18 +302,19 @@ check_action() {
 
   if [ "$has_fail" = "true" ]; then
     print_result "FAIL" "$depth" "$uses_clean" "(composite)"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   else
     print_result "PASS" "$depth" "$uses_clean" "(composite)"
     PASS_COUNT=$((PASS_COUNT + 1))
   fi
 
   # Recurse into sub-dependencies
+  local next_chain="${uses_clean}"
+  if [ -n "$parent_chain" ]; then
+    next_chain="${parent_chain} -> ${uses_clean}"
+  fi
   while IFS= read -r sub; do
     [ -z "$sub" ] && continue
-    local next_chain="${uses_clean}"
-    if [ -n "$parent_chain" ]; then
-      next_chain="${parent_chain} -> ${uses_clean}"
-    fi
     check_action "$sub" $((depth + 1)) "$next_chain" || true
   done <<< "$sub_uses"
 }
