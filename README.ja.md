@@ -1,6 +1,6 @@
-[English](README.md)
-
 # check-actions-sha-pinning
+
+[English](README.md) | **日本語**
 
 GitHub Actions のワークフローファイルおよびコンポジットアクションファイルで参照されている全アクションが SHA ピンニングされているかを、推移的依存関係を含めて再帰的にチェックする Bash スクリプトです。
 

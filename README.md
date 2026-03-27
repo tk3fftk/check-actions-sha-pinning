@@ -1,6 +1,6 @@
-[日本語](README.ja.md)
-
 # check-actions-sha-pinning
+
+**English** | [日本語](README.ja.md)
 
 A Bash script that recursively checks all GitHub Actions referenced in your workflow and composite action files for SHA pinning, including transitive dependencies.
 
