@@ -218,6 +218,8 @@ $(yq eval '.jobs[].steps[].uses // ""' "$file" 2>/dev/null || true)"
 
 clean_uses_value() {
   local s="${1%% #*}"
+  # sed is clearer than parameter expansion for trailing space removal
+  # shellcheck disable=SC2001
   echo "$s" | sed 's/ *$//'
 }
 
